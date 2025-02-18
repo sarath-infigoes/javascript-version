@@ -230,11 +230,14 @@ const ProductManagement = () =>{
 
   const handleUploadClick = () => {
     const imagesToUpload = formik.values.productImage.filter(image => typeof image === 'object');
+
     if (imagesToUpload.length > 0) {
       const formData = new FormData();
-      imagesToUpload.forEach((productImage, index) => {formData.append(productImage[$[index]], productImage);formData.append('product_id', productId);
+      imagesToUpload.forEach((productImage, index) => {formData.append(`productImage[${index}]`, productImage);
 
       });
+
+      formData.append('product_id', productId);
 
       axios.post(`https://spinryte.in/draw/api/Product/image_upload`, formData)
         .then(response => {
@@ -251,23 +254,19 @@ const ProductManagement = () =>{
     }
   };
 
-  const handleFileUpload = (e, index) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imageUrl = event.target.result;
-        handleImageChange(imageUrl, index);
-      };
-      reader.readAsDataURL(file);
+  const handleFileUpload = e => {
+    const files = Array.from(e.target.files) // Convert files to array
+    const newProductImages = [...formik.values.productImage]
 
-      // Replace the existing image in the same row
+    files.forEach(file => {
+      if (newProductImages.length < 5) {
+        // Max limit check
+        newProductImages.push(file)
+      }
+    })
 
-      const newProductImage = [...formik.values.productImage];
-      newProductImage[index] = file;
-      formik.setFieldValue(newProductImage[$[index]], file);
-    }
-  };
+    formik.setFieldValue('productImage', newProductImages)
+  }
 
   const handleImageChange = (imageUrl, index) => {
     console.log(imageUrl)
@@ -654,64 +653,45 @@ console.log (productId)
             </Button>
           </DialogActions>
         </Dialog>
-      <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
-        <Dialog
-          open={openAddImageDialog}
-          onClose={() => setOpenAddImageDialog(false)}
-          maxWidth="120px"
-        >
+        <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
+        <Dialog open={openAddImageDialog} onClose={() => setOpenAddImageDialog(false)} maxWidth='120px'>
           <DialogTitle>Add Images</DialogTitle>
           <DialogContent>
-            <form action="/product_images" method="POST" encType="multipart/form-data">
+            <form encType='multipart/form-data'>
               {formik.values.productImage.map((image, index) => (
                 <div key={index}>
-                  <input
-                    type="checkbox"
-                    style={{
-                      color: 'blue',
-                      backgroundColor: 'lightblue',
-                      border: '2px solid blue',
-                      borderRadius: '5px',
-                      padding: '5px',
-                      margin: '10px',
-                      boxShadow: '2px 2px 5px rgba(0, 0, 0, 0.2)',
-                      cursor: 'pointer',
-                    }}
-                    checked={image.selected}
-                    onChange={() => handleImageSelection(index)}
-                  />
-                  {typeof image === 'object' && image?.url ? (
-  <img
-    src={image.url}
-    alt={`Product ${productId} Image ${index + 1}`}
-    style={{ width: '100px', height: 'auto' }}
-  />
-) : (
-  <img
-    src={image instanceof File ? URL.createObjectURL(image) : image}
-    alt={`Product ${productId} Image ${index + 1}`}
-    style={{ width: '100px', height: 'auto' }}
-  />
-)}
-                  <input
-                   type="file"
-                    name="images"
-                    accept="image/*"
-                    onChange={(e) => handleFileUpload(e, index)}
-                  />
-                  <Button onClick={() => removeImage(formik.values.productImage, image.id, index)} color="primary">
+                  {typeof image === 'object' && image.url ? (
+                    <img
+                      src={image.url}
+                      alt={`Product Image ${index + 1}`}
+                      style={{ width: '100px', height: 'auto' }}
+                    />
+                  ) : (
+                    <img
+                      src={image instanceof File ? URL.createObjectURL(image) : image}
+                      alt={`Product Image ${index + 1}`}
+                      style={{ width: '100px', height: 'auto' }}
+                    />
+                  )}
+                  <Button onClick={() => removeImage(formik.values.productImage, image.id, index)} color='primary'>
                     Remove Image
                   </Button>
                 </div>
               ))}
-              <Button onClick={handleUploadClick} color="primary">
+              <input
+                type='file'
+                name='images'
+                accept='image/*'
+                multiple // Allow multiple images to be selected
+                onChange={handleFileUpload}
+              />
+              <Button onClick={handleAddImage}>Add Image</Button>
+              <Button onClick={handleUploadClick} color='primary'>
                 Upload Images
               </Button>
             </form>
-            <Button onClick={handleAddImage}>Add Image</Button>
           </DialogContent>
-          <DialogActions>
-          </DialogActions>
+          <DialogActions></DialogActions>
         </Dialog>
       </div>
       <Dialog

@@ -204,45 +204,50 @@ const EmployeeManagement = () => {
     }
   }
 
-  const handleFileUpload = e => {
-    const files = Array.from(e.target.files) // Convert files to array
-    const newProductImages = [...formik.values.productImage]
+  const handleFileUpload = (event) => {
+    const files = event.target.files;
+    if (files.length > 0) {
+      const newImages = Array.from(files).map((file) => ({
+        file, // Store the file itself
+        url: URL.createObjectURL(file) // Create a preview URL
+      }));
 
-    files.forEach(file => {
-      if (newProductImages.length < 5) {
-        // Max limit check
-        newProductImages.push(file)
-      }
-    })
-
-    formik.setFieldValue('productImage', newProductImages)
-  }
+      // Update formik values
+      formik.setFieldValue('productImage', [...formik.values.productImage, ...newImages]);
+    }
+  };
 
   const handleUploadClick = () => {
-    const imagesToUpload = formik.values.productImage.filter(image => typeof image === 'object')
+    const imagesToUpload = formik.values.productImage.filter(image => image.file instanceof File);
 
     if (imagesToUpload.length > 0) {
-      const formData = new FormData()
+      const formData = new FormData();
+
       imagesToUpload.forEach((productImage, index) => {
-        formData.append(`productImage[${index}]`, productImage)
-      })
-      formData.append('product_id', productId)
+        formData.append(`productImage[${index}]`, productImage.file); // Extract the file, not the object
+      });
+
+      formData.append('product_id', productId);
 
       axios
-        .post(`https://spinryte.in/draw/api/Product/image_upload`, formData)
+        .post(`https://spinryte.in/draw/api/Product/image_upload`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
         .then(response => {
-          showMessage('Images Uploaded successfully')
-          setOpenAddImageDialog(false)
-          fetchProducts()
+          console.log('Upload response:', response.data);
+          showMessage('Images Uploaded successfully');
+          setOpenAddImageDialog(false);
+          fetchProducts();
         })
         .catch(error => {
-          console.error('Error uploading images:', error)
-          showMessage('Error uploading images')
-        })
+          console.error('Error uploading images:', error.response?.data || error);
+          showMessage('Error uploading images');
+        });
     } else {
-      showMessage('No images selected for upload')
+      showMessage('No images selected for upload');
     }
-  }
+  };
+
 
   const handleImageChange = (imageUrl, index) => {
     console.log(imageUrl)
@@ -367,23 +372,27 @@ const EmployeeManagement = () => {
 
   const removeImage = async (productImage, id, index) => {
     try {
-      const response = await axios.post('https://spinryte.in/draw/api/Product/remove_image', {
-        id: id
-      })
+      if (id) {
+        const response = await axios.post('https://spinryte.in/draw/api/Product/remove_image', { id });
 
-      if (response) {
-        showMessage('Image removed successfully')
+        if (response.data && response.data.status) {
+          showMessage('Image removed successfully');
+        } else {
+          showMessage('Failed to remove image. Please try again.');
 
-        const newProductImages = productImage.filter(image => image.id !== id)
-        formik.setFieldValue('productImage', newProductImages)
-      } else {
-        showMessage('Failed to remove image. Please try again.')
+          return; // Stop execution if API fails
+        }
       }
+
+      // Remove from local state, regardless of whether it's uploaded or not
+      const newProductImages = productImage.filter((image, imgIndex) => image.id !== id && imgIndex !== index);
+      formik.setFieldValue('productImage', newProductImages);
     } catch (error) {
-      console.error('Error removing image:', error)
-      showMessage('Error removing image. Please try again.')
+      console.error('Error removing image:', error);
+      showMessage('Error removing image. Please try again.');
     }
-  }
+  };
+
 
   const handleSearchChange = event => {
     const { value } = event.target
@@ -563,26 +572,18 @@ const EmployeeManagement = () => {
           <DialogTitle>Add Images</DialogTitle>
           <DialogContent>
             <form encType='multipart/form-data'>
-              {formik.values.productImage.map((image, index) => (
-                <div key={index}>
-                  {typeof image === 'object' && image.url ? (
-                    <img
-                      src={image.url}
-                      alt={`Product Image ${index + 1}`}
-                      style={{ width: '100px', height: 'auto' }}
-                    />
-                  ) : (
-                    <img
-                      src={image instanceof File ? URL.createObjectURL(image) : image}
-                      alt={`Product Image ${index + 1}`}
-                      style={{ width: '100px', height: 'auto' }}
-                    />
-                  )}
-                  <Button onClick={() => removeImage(formik.values.productImage, image.id, index)} color='primary'>
-                    Remove Image
-                  </Button>
-                </div>
-              ))}
+            {formik.values.productImage.map((image, index) => (
+  <div key={index}>
+    <img
+      src={image.url || (image instanceof File ? URL.createObjectURL(image) : image)}
+      alt={`Product Image ${index + 1}`}
+      style={{ width: '100px', height: 'auto' }}
+    />
+    <Button onClick={() => removeImage(index)} color='primary'>
+      Remove Image
+    </Button>
+  </div>
+))}
               <input
                 type='file'
                 name='images'
