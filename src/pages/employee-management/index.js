@@ -509,7 +509,7 @@ const EmployeeManagement = () => {
       </TableContainer>
 
       <Dialog open={openDialog} onClose={handleDialogClose} maxWidth='120px'>
-        <DialogTitle>{editItemId ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+        <DialogTitle>{editItemId ? 'Edit Item' : 'Add Item'}</DialogTitle>
         <DialogContent>
           <Autocomplete
             options={categories}
@@ -595,7 +595,6 @@ const EmployeeManagement = () => {
               <Button onClick={handleUploadClick} color='primary'>
                 Upload Images
               </Button>
-              <Button >Save</Button>
             </form>
           </DialogContent>
           <DialogActions></DialogActions>

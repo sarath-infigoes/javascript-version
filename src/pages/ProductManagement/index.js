@@ -32,6 +32,9 @@ const ProductManagement = () =>{
   const [selectedCategoryName, setSelectedCategoryName] = useState('');
   const [inputCategory, setInputCategory] = useState('');
   const [statusNumericValue, setStatusNumericValue] = useState(null)
+  const [existingImages, setExistingImages] = useState([]);
+  const [editingProductId, setEditingProductId] = useState(null);
+  const [openEditImageDialog, setOpenEditImageDialog] = useState(false);
     const [attributes, setAttributes] = useState([]);
 
   useEffect(() => {
@@ -144,46 +147,62 @@ const ProductManagement = () =>{
       name: '',
       description: '',
       price: '',
-      created_at: '',
       status: '',
       category: '',
-      productImage: [],
-      attributes: {}, // Use an object instead of an array to store key-value pairs
+      productImage: [], // Ensure this is an empty array
+      attributes: {}, // Store attribute values as an object { id: value }
     },
 
     onSubmit: async (values) => {
+      console.log("Submitting form values:", values);
+
+       const formattedAttributes = Object.keys(values.attributes).map((atr_id) => ({
+         id: Number(atr_id), // Ensure correct attribute ID
+         input_values: values.attributes[atr_id] || "", // Ensure correct input value
+       }));
+
       const productData = {
+        id: editItemId || "", // Ensure correct ID for edit case
         name: values.name,
         description: values.description,
         price: values.price,
-        category: selectedCategory,
-        status: values.status === "Active" ? 1 : 2,
-        attributes: attributes.map((attr) => ({
-          atr_id: attr.id, // Ensure correct attribute ID
-          atr_value: values.attributes[attr.id] || "", // Get the value from formik state
-        })),
+        category: selectedCategory || values.category, // Ensure category is set correctly
+        status: values.status === "Active" ? "1" : "2",
+        attributes: formattedAttributes, // Ensure attributes are correctly structured
       };
 
+      console.log("Final product data being sent:", productData);
+      console.log("Edit item ID:", editItemId);
 
       try {
+        let response;
         if (editItemId) {
-          await axios.post(`https://spinryte.in/draw/api/Product/update_product/${editItemId}`, productData);
-          showMessage('Product Updated successfully');
+          response = await axios.post(
+            `https://spinryte.in/draw/api/Product/update_product/${editItemId}`,
+            productData
+          );
+          console.log("Update response:", response.data);
+          showMessage("Product Updated successfully");
         } else {
-          const response = await axios.post('https://spinryte.in/draw/api/Product/create_product', productData);
-          showMessage('Product Added successfully');
+          response = await axios.post(
+            "https://spinryte.in/draw/api/Product/create_product",
+            productData
+          );
+          console.log("Create response:", response.data);
+          showMessage("Product Added successfully");
 
-          const newProductId = response.data.output.product_id;
-          associateImagesWithProduct(newProductId);
-          setOpenAddImageDialog(true);
+          const newProductId = response.data.output?.product_id;
+          if (newProductId) {
+            associateImagesWithProduct(newProductId);
+            setOpenAddImageDialog(true);
+          }
         }
 
         handleDialogClose();
         fetchProducts();
-        setOpenDialog(false);
       } catch (error) {
-        console.error('Error adding/updating product:', error);
-        showMessage('Product Add/Update Failed');
+        console.error("Error adding/updating product:", error.response?.data || error.message);
+        showMessage("Product Add/Update Failed");
       }
     },
   });
@@ -229,21 +248,23 @@ const ProductManagement = () =>{
   };
 
   const handleUploadClick = () => {
-    const imagesToUpload = formik.values.productImage.filter(image => typeof image === 'object');
+    const imagesToUpload = formik.values.productImage.filter(image => image instanceof File);
 
     if (imagesToUpload.length > 0) {
       const formData = new FormData();
-      imagesToUpload.forEach((productImage, index) => {formData.append(`productImage[${index}]`, productImage);
 
+      // Append images correctly
+      imagesToUpload.forEach((productImage, index) => {
+        formData.append(`images[]`, productImage); // ✅ Corrected Syntax
       });
 
-      formData.append('product_id', productId);
+      formData.append('product_id', editItemId); // Ensure this is correct
 
-      axios.post(`https://spinryte.in/draw/api/Product/image_upload`, formData)
+      axios.post("https://spinryte.in/draw/api/Product/image_upload", formData)
         .then(response => {
-          showMessage('Images Uploaded successfully');
+          showMessage('Images uploaded successfully');
           setOpenAddImageDialog(false);
-          fetchProducts();
+          fetchProducts(); // ✅ Ensure this updates the product list
         })
         .catch(error => {
           console.error('Error uploading images:', error);
@@ -254,19 +275,10 @@ const ProductManagement = () =>{
     }
   };
 
-  const handleFileUpload = e => {
-    const files = Array.from(e.target.files) // Convert files to array
-    const newProductImages = [...formik.values.productImage]
-
-    files.forEach(file => {
-      if (newProductImages.length < 5) {
-        // Max limit check
-        newProductImages.push(file)
-      }
-    })
-
-    formik.setFieldValue('productImage', newProductImages)
-  }
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    formik.setFieldValue("productImage", [...(formik.values.productImage || []), ...files]);
+  };
 
   const handleImageChange = (imageUrl, index) => {
     console.log(imageUrl)
@@ -295,16 +307,17 @@ const ProductManagement = () =>{
   };
 console.log (productId)
 
-  const handleImageSelection = (index) => {
-    const updatedImages = formik.values.productImage.map((image, i) => ({
-      ...image,
-      selected: i === index,
-    }));
-    formik.setValues((prevValues) => ({
-      ...prevValues,
-      productImage: updatedImages,
-    }));
-  };
+const handleImageSelection = (index) => {
+  const updatedImages = formik.values.productImage.map((image, i) => ({
+    ...image,
+    selected: i === index,
+  }));
+  formik.setValues((prevValues) => ({
+    ...prevValues,
+    productImage: updatedImages,
+  }));
+};
+
 
   const handleCategorySearch = (inputValue) => {
     axios.get(`https://spinryte.in/draw/api/Category/categoryList?name=${inputValue}`)
@@ -322,20 +335,50 @@ console.log (productId)
 
 
 
-  const handleCategorySelect = (selectedCategoryId, selectedCategoryName) => {
-    setSelectedCategory(selectedCategoryId);
-    setSelectedCategoryName(selectedCategoryName);
+  const handleCategorySelect = async (categoryId) => {
+    setSelectedCategory(categoryId);
+    formik.setFieldValue("category", categoryId); // Ensure category is updated in Formik
 
-    formik.setFieldValue('category_id', selectedCategoryId);
+    try {
+      const response = await axios.get(`https://spinryte.in/draw/api/Attributes/FetchAttribute/${categoryId}`);
+
+      if (response.data && response.data.status) {
+        const fetchedAttributes = response.data.attributes || [];
+
+        // Ensure input_values are formatted correctly
+        const processedAttributes = fetchedAttributes.map(attr => ({
+          ...attr,
+          input_values: typeof attr.input_values === "string"
+            ? attr.input_values.split(",")
+            : Array.isArray(attr.input_values)
+            ? attr.input_values
+            : [],
+        }));
+
+        // Initialize formik attributes state
+        const initialAttributes = {};
+        processedAttributes.forEach(attr => {
+          initialAttributes[attr.id] = ""; // Default empty value
+        });
+
+        setAttributes(processedAttributes);
+        await formik.setFieldValue("attributes", initialAttributes); // Ensure Formik updates correctly
+      } else {
+        console.error("No attributes found for this category");
+        setAttributes([]);
+        await formik.setFieldValue("attributes", {}); // Reset attributes
+      }
+    } catch (error) {
+      console.error("Error fetching attributes:", error.response?.data || error.message);
+      setAttributes([]);
+      await formik.setFieldValue("attributes", {}); // Reset attributes on error
+    }
   };
 
-  const handleStatusMenuClose = status => {
-    setStatusMenuAnchor(null)
-    formik.setFieldValue('status', status) // Set string value in Formik
-
-    // Update numeric value for API
-    setStatusNumericValue(status === 'Active' ? 1 : 2)
-  }
+  const handleStatusMenuClose = (value) => {
+    formik.setFieldValue("status", value);
+    setStatusMenuAnchor(null);
+  };
 
   const handleEditClick = async (productId) => {
     try {
@@ -343,60 +386,88 @@ console.log (productId)
       const productDetails = response.data;
 
       if (productDetails && productDetails.dataList) {
-        const { id, name, description, price, created_at, status, category_id, product_images } = productDetails.dataList;
+        const {
+          id, name, description, price, created_at, status,
+          category_id, attributes, product_images
+        } = productDetails.dataList;
 
-        // Set formik values with the retrieved product details
+        // Fetch attributes based on the selected category
+        const attrResponse = await axios.get(`https://spinryte.in/draw/api/Attributes/FetchAttribute/${category_id}`);
+        const fetchedAttributes = attrResponse.data.attributes || [];
+
+        // Map attributes
+        const attributeValues = {};
+        fetchedAttributes.forEach(attr => {
+          const productAttr = attributes.find(pa => pa.id === attr.id);
+          attributeValues[attr.id] = productAttr?.input_values || attr.input_values[0] || "";
+        });
+
+        // Set form values including images
         formik.setValues({
-          id: id,
-          name: name,
-          description: description,
-          price: price,
+          id,
+          name,
+          description,
+          price,
           created_at: created_at || '',
           status: status === 'Active' ? 1 : 2,
           category: category_id,
-          productImage: product_images.map(image => ({ id: image.id, url: image.image })),
+          productImage: product_images.map(image => ({ id: image.id, url: image.image })), // Set images
+          attributes: attributeValues,
         });
 
-        // Open the edit dialog
+        // Store product images separately for the edit image UI
+        setExistingImages(product_images.map(image => ({ id: image.id, url: image.image })));
+
+        // Open Image Edit Dialog first
         setEditItemId(id);
+        setOpenEditImageDialog(true); // Open Edit Image Section First
+        setSelectedCategory(category_id);
         setOpenDialog(true);
-        setOpenAddImageDialog(true);
-
-        // Display productId and selected category name
-        setProductId(productId);
-        setSelectedCategoryName(category_id);
-
-        // Print images with delete code
-        console.log('Images:', product_images.map(image => ({ id: image.id, url: image.image })));
+        setAttributes(fetchedAttributes);
       } else {
-        console.error('Error fetching product details: Product details not found');
-        showMessage('Error fetching product details: Product details not found');
+        showMessage("Error fetching product details: Product details not found");
       }
     } catch (error) {
-      console.error('Error fetching product details:', error);
-      showMessage('Error fetching product details');
+      console.error("Error fetching product details:", error);
+      showMessage("Error fetching product details");
     }
   };
 
+
   const placeholderImage = 'https://dummyimage.com/600x400/000/fff';
 
-  const removeImage = async (productImage, id, index) => {
+  const removeImage = async (imageId, index) => {
+    if (!imageId) {
+      // If no imageId, it's a new (unsaved) image, just remove it from UI
+      formik.setFieldValue(
+        "productImage",
+        formik.values.productImage.filter((_, i) => i !== index)
+      );
+
+      return;
+    }
+
     try {
-      const response = await axios.post('https://spinryte.in/draw/api/Product/remove_image', {
-        id: id,
+      console.log("Removing image ID:", imageId); // Debugging
+
+      const response = await axios.post("https://spinryte.in/draw/api/Product/remove_image", {
+        id: imageId, // Ensure correct request format
       });
 
-      if (response) {
-        showMessage('Image removed successfully');
+      console.log("API Response:", response.data);
 
-        const newProductImages = productImage.filter(image => image.id !== id);
-        formik.setFieldValue('productImage', newProductImages);
+      if (response.data.status) {
+        showMessage("Image removed successfully");
+        formik.setFieldValue(
+          "productImage",
+          formik.values.productImage.filter((_, i) => i !== index)
+        );
       } else {
-        showMessage('Failed to remove image. Please try again.');
+        showMessage("Failed to remove image from server.");
       }
     } catch (error) {
-      console.error('Error removing image:', error);
-      showMessage('Error removing image. Please try again.');
+      console.error("Error removing image:", error);
+      showMessage("Error removing image. Please try again.");
     }
   };
 
@@ -477,222 +548,218 @@ console.log (productId)
         </TableBody>
       </Table>
     </TableContainer>
-      <Dialog open={openDialog} onClose={handleDialogClose} >
-          <DialogTitle>{editItemId ? "Edit Item" : ""}</DialogTitle>
-          <DialogContent>
-            <Box component={Paper} sx={{ padding: 4, paddingBottom: 8 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <Box>
-                    {/* Header Section with Title and Buttons */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mt={3} mb={3}>
-                      <h1 style={{ margin: 0 }}>Add Attributes</h1>
-                      <Box display="flex" gap={2}>
-                        <Button variant="contained" style={{ backgroundColor: "#FF007F" }} onClick={handleDialogClose}>
-                          Backt to list
-                        </Button>
-                      </Box>
-                    </Box>
-                    <hr />
+    <Dialog open={openDialog} onClose={handleDialogClose}>
+  <DialogTitle>{editItemId ? "Edit Item" : "Add New Item"}</DialogTitle>
+  <DialogContent>
+    <Box component={Paper} sx={{ padding: 4, paddingBottom: 8 }}>
+      <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <Box>
+            {/* Header Section */}
+            <Box display="flex" justifyContent="space-between" alignItems="center" mt={3} mb={3}>
+              <h1 style={{ margin: 0 }}>Add Attributes</h1>
+              <Button variant="contained" style={{ backgroundColor: "#FF007F" }} onClick={handleDialogClose}>
+                Back to List
+              </Button>
+            </Box>
+            <hr />
 
-                    {/* Category Dropdown */}
-                    <Box mt={1} mb={2}>
-                      <h1 style={{ fontWeight: "400" }}>Category:</h1>
-                      <FormControl style={{ width: "500px" }}>
+            {/* Category Dropdown */}
+            <Box mt={1} mb={2}>
+              <h1 style={{ fontWeight: "400" }}>Category:</h1>
+              <FormControl style={{ width: "500px" }}>
+                <Select
+                  value={selectedCategory || ""}
+                  onChange={(e) => handleCategorySelect(e.target.value)}
+                  displayEmpty
+                  MenuProps={{
+                    PaperProps: { style: { maxHeight: 200, overflowY: "auto" } },
+                  }}
+                >
+                  <MenuItem value="" disabled style={{ color: "#9e9e9e" }}>Select Category</MenuItem>
+                  {categories.map((category) => (
+                    <MenuItem key={category.id} value={category.id}>
+                      {category.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {/* Dynamic Attributes Form */}
+            <Grid container spacing={3}>
+              {attributes.length > 0 ? (
+                attributes.map((attr) => (
+                  <Grid item xs={12} sm={6} key={attr.id}>
+                    <FormControl fullWidth>
+                      <h3>{attr.name}</h3>
+
+                      {/* Text Box Input */}
+                      {attr.input_type === "Text box" && (
+                        <TextField
+                          placeholder="Enter value"
+                          variant="outlined"
+                          fullWidth
+                          value={formik.values.attributes[attr.id] || ""}
+                          onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
+                        />
+                      )}
+
+                      {/* Dropdown Input */}
+                      {attr.input_type === "Dropdown" && (
                         <Select
-                          value={selectedCategory || ""}
-                          onChange={(e) => handleCategorySelect(e.target.value)}
-                          displayEmpty
-                          MenuProps={{
-                            PaperProps: {
-                              style: { maxHeight: 200, overflowY: "auto" },
-                            },
-                          }}
+                          value={formik.values.attributes[attr.id] || ""}
+                          onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
                         >
-                          <MenuItem value="" disabled style={{ color: "#9e9e9e" }}>
-                            Select Category
-                          </MenuItem>
-                          {categories.map((category) => (
-                            <MenuItem key={category.id} value={category.id}>
-                              {category.name}
-                            </MenuItem>
-                          ))}
+                          {typeof attr.input_values === "string"
+                            ? attr.input_values.split(",").map((value, index) => (
+                                <MenuItem key={index} value={value}>{value}</MenuItem>
+                              ))
+                            : Array.isArray(attr.input_values)
+                            ? attr.input_values.map((value, index) => (
+                                <MenuItem key={index} value={value}>{value}</MenuItem>
+                              ))
+                            : null}
                         </Select>
-                      </FormControl>
-                    </Box>
+                      )}
 
-                    {/* Dynamic Attributes Form */}
-                    <Grid container spacing={3}>
-                      {attributes.length > 0 ? (
-                        attributes.map((attr) => (
-                          <Grid item xs={12} sm={6} key={attr.id}>
-                            <FormControl fullWidth>
-                              <h3>{attr.name}</h3>
+                      {/* Radio Button Input */}
+                      {attr.input_type === "Radio button" && (
+                        <RadioGroup
+                          value={formik.values.attributes[attr.id] || ""}
+                          onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
+                        >
+                          {typeof attr.input_values === "string"
+                            ? attr.input_values.split(",").map((value, index) => (
+                                <FormControlLabel key={index} value={value} control={<Radio />} label={value} />
+                              ))
+                            : Array.isArray(attr.input_values)
+                            ? attr.input_values.map((value, index) => (
+                                <FormControlLabel key={index} value={value} control={<Radio />} label={value} />
+                              ))
+                            : null}
+                        </RadioGroup>
+                      )}
 
-          {/* Text Box Input */}
-          {attr.input_type === "Text box" && (
-            <TextField
-              placeholder="Enter value"
-              variant="outlined"
-              fullWidth
-              value={formik.values.attributes[attr.id] || ""}
-              onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-            />
-          )}
-
-
-          {/* Dropdown Input */}
-          {attr.input_type === "Dropdown" && (
-            <Select
-              value={formik.values.attributes[attr.id] || ""}
-              onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-            >
-              {Array.isArray(attr.input_values)
-                ? attr.input_values.map((value, index) => (
-                    <MenuItem key={index} value={value}>
-                      {value}
-                    </MenuItem>
-                  ))
-                : typeof attr.input_values === "string"
-                ? attr.input_values.split(",").map((value, index) => (
-                    <MenuItem key={index} value={value}>
-                      {value}
-                    </MenuItem>
-                  ))
-                : null}
-            </Select>
-          )}
-
-          {/* Radio Button Input */}
-          {attr.input_type === "Radio button" && (
-            <RadioGroup
-              value={formik.values.attributes[attr.id] || ""}
-              onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-            >
-              {Array.isArray(attr.input_values)
-                ? attr.input_values.map((value, index) => (
-                    <FormControlLabel key={index} value={value} control={<Radio />} label={value} />
-                  ))
-                : typeof attr.input_values === "string"
-                ? attr.input_values.split(",").map((value, index) => (
-                    <FormControlLabel key={index} value={value} control={<Radio />} label={value} />
-                  ))
-                : null}
-            </RadioGroup>
-          )}
-
-          {/* Date Picker Input */}
-          {attr.input_type === "Date picker" && (
+                    {/* Date Picker Input */}
+{attr.input_type === "Date picker" && (
   <TextField
     type="date"
     variant="outlined"
     fullWidth
     value={formik.values.attributes[attr.id] || ""}
-    onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
+    onChange={(e) => {
+      formik.setFieldValue(`attributes.${attr.id}`, e.target.value);
+    }}
   />
 )}
 
-    {/* Time Picker Input */}
-    {attr.input_type === "Time picker" && (
-      <TextField
-        type="time"
-        variant="outlined"
-        fullWidth
-        value={formik.values.attributes[attr.id] || ""}
-        onChange={(e) => handleAttributeChange(attr.id, e.target.value)}
-      />
-    )}
+{/* Time Picker Input */}
+{attr.input_type === "Time picker" && (
+  <TextField
+    type="time"
+    variant="outlined"
+    fullWidth
+    value={formik.values.attributes[attr.id] || ""}
+    onChange={(e) => {
+      formik.setFieldValue(`attributes.${attr.id}`, e.target.value);
+    }}
+  />
+)}
 
-                            </FormControl>
-                          </Grid>
-                        ))
-                      ) : (
-                        <Grid item xs={12}>
-                          <p>No attributes available</p>
-                        </Grid>
-                      )}
-                    </Grid>
-                  </Box>
+                    </FormControl>
+                  </Grid>
+                ))
+              ) : (
+                <Grid item xs={12}>
+                  <p>No attributes available</p>
                 </Grid>
-              </Grid>
-            </Box>
-            <TextField
-            label='Product Name'
-            id='name'
-            fullWidth
-            value={formik.values.name}
-            onChange={formik.handleChange}
-          />
-          <TextField
-            label='Description'
-            id='description'
-            fullWidth
-            value={formik.values.description}
-            onChange={formik.handleChange}
-          />
-          <TextField label='Price' id='price' fullWidth value={formik.values.price} onChange={formik.handleChange} />
-          <Button variant='outlined' onClick={handleStatusMenuOpen} style={{ marginTop: '10px' }}>
-            Status *
-          </Button>
-          <Menu
-            anchorEl={statusMenuAnchor}
-            open={Boolean(statusMenuAnchor)}
-            onClose={() => handleStatusMenuClose(formik.values.status)}
-          >
-            <MenuItem onClick={() => handleStatusMenuClose('Active')}>Active</MenuItem>
-            <MenuItem onClick={() => handleStatusMenuClose('Inactive')}>Inactive</MenuItem>
-          </Menu>
-          <TextField fullWidth value={formik.values.status} onChange={formik.handleChange} />
-          </DialogContent>
+              )}
+            </Grid>
+          </Box>
+        </Grid>
+      </Grid>
+    </Box>
 
-          {/* Buttons */}
-          <DialogActions>
+    {/* Product Details */}
+    <TextField label="Product Name" id="name" fullWidth value={formik.values.name} onChange={formik.handleChange} />
+    <TextField label="Description" id="description" fullWidth value={formik.values.description} onChange={formik.handleChange} />
+    <TextField label="Price" id="price" fullWidth value={formik.values.price} onChange={formik.handleChange} />
 
-            <Button variant="contained" color="primary" onClick={formik.handleSubmit}>
-              add
-            </Button>
-          </DialogActions>
-        </Dialog>
+    {/* Status Selection */}
+    <Button variant="outlined" onClick={handleStatusMenuOpen} style={{ marginTop: "10px" }}>
+      Status *
+    </Button>
+    <Menu anchorEl={statusMenuAnchor} open={Boolean(statusMenuAnchor)} onClose={() => handleStatusMenuClose(formik.values.status)}>
+      <MenuItem onClick={() => handleStatusMenuClose("Active")}>Active</MenuItem>
+      <MenuItem onClick={() => handleStatusMenuClose("Inactive")}>Inactive</MenuItem>
+    </Menu>
+    <TextField fullWidth value={formik.values.status} onChange={formik.handleChange} />
+  </DialogContent>
+
+  {/* Buttons */}
+  <DialogActions>
+    <Button variant="contained" color="primary" onClick={formik.handleSubmit}>
+      Save
+    </Button>
+  </DialogActions>
+</Dialog>
+
         <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
-        <Dialog open={openAddImageDialog} onClose={() => setOpenAddImageDialog(false)} maxWidth='120px'>
-          <DialogTitle>Add Images</DialogTitle>
-          <DialogContent>
-            <form encType='multipart/form-data'>
-              {formik.values.productImage.map((image, index) => (
-                <div key={index}>
-                  {typeof image === 'object' && image.url ? (
-                    <img
-                      src={image.url}
-                      alt={`Product Image ${index + 1}`}
-                      style={{ width: '100px', height: 'auto' }}
-                    />
-                  ) : (
-                    <img
-                      src={image instanceof File ? URL.createObjectURL(image) : image}
-                      alt={`Product Image ${index + 1}`}
-                      style={{ width: '100px', height: 'auto' }}
-                    />
-                  )}
-                  <Button onClick={() => removeImage(formik.values.productImage, image.id, index)} color='primary'>
-                    Remove Image
-                  </Button>
-                </div>
-              ))}
-              <input
-                type='file'
-                name='images'
-                accept='image/*'
-                multiple // Allow multiple images to be selected
-                onChange={handleFileUpload}
-              />
-              <Button onClick={handleAddImage}>Add Image</Button>
-              <Button onClick={handleUploadClick} color='primary'>
-                Upload Images
-              </Button>
-            </form>
-          </DialogContent>
-          <DialogActions></DialogActions>
-        </Dialog>
+        <Dialog open={openAddImageDialog} onClose={() => setOpenAddImageDialog(false)} maxWidth="sm">
+  <DialogTitle>Add Images</DialogTitle>
+  <DialogContent>
+    <div>
+      {(formik.values.productImage || []).map((image, index) => (
+        <div key={index} style={{ marginBottom: '10px' }}>
+          <img
+            src={image instanceof File ? URL.createObjectURL(image) : image.url || image}
+            alt={`Product Image ${index + 1}`}
+            style={{ width: "100px", height: "auto" }}
+          />
+          <Button
+            onClick={() => removeImage(image.id || null, index)}
+            color="secondary"
+          >
+            Remove Image
+          </Button>
+        </div>
+      ))}
+      <input
+        type="file"
+        name="images"
+        accept="image/*"
+        multiple
+        onChange={handleFileUpload}
+      />
+      <Button onClick={handleUploadClick} color="primary">
+        Upload Images
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+      </div>
+      <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
+      <Dialog open={openEditImageDialog} onClose={() => setOpenEditImageDialog(false)} maxWidth="sm">
+  <DialogTitle>Edit Images</DialogTitle>
+  <DialogContent>
+    <div>
+      {existingImages.map((image, index) => (
+        <div key={image.id} style={{ marginBottom: '10px' }}>
+          <img src={image.url} alt={`Product Image ${index + 1}`} style={{ width: "100px", height: "auto" }} />
+          <Button onClick={() => removeImage(image.id, index)} color="secondary">
+            Remove Image
+          </Button>
+        </div>
+      ))}
+      <input type="file" name="newImages" accept="image/*" multiple onChange={handleFileUpload} />
+      <Button onClick={handleUploadClick} color="primary">
+        Upload New Images
+      </Button>
+    </div>
+  </DialogContent>
+</Dialog>
+
       </div>
       <Dialog
         open={openDeleteDialog}
