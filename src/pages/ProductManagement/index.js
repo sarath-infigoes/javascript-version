@@ -150,8 +150,8 @@ const ProductManagement = () =>{
       price: '',
       status: '',
       category: '',
-      productImage: [], // Ensure this is an empty array
-      attributes: {}, // Store attribute values as an object { id: value }
+      productImage: [],
+      attributes: {},
     },
 
     onSubmit: async (values) => {
@@ -193,9 +193,9 @@ const ProductManagement = () =>{
 
           const createdProductId = response.data.output?.product_id;
           if (createdProductId) {
-            setNewProductId(createdProductId); // ✅ Store the new product ID
-            formik.setFieldValue("id", createdProductId); // ✅ Update Formik's values
-            setOpenAddImageDialog(true); // ✅ Open the image upload dialog
+            setNewProductId(createdProductId);
+            formik.setFieldValue("id", createdProductId);
+            setOpenAddImageDialog(true);
           }
         }
 
@@ -214,7 +214,7 @@ const ProductManagement = () =>{
       ...prevValues,
       attributes: {
         ...prevValues.attributes,
-        [attributeId]: value, // Store value using attribute ID as key
+        [attributeId]: value,
       },
     }));
   };
@@ -250,7 +250,7 @@ const ProductManagement = () =>{
   };
 
   const handleUploadClick = async () => {
-    const productId = formik.values.id || newProductId; // ✅ Get the correct product ID
+    const productId = formik.values.id || newProductId;
     console.log("Uploading images for Product ID:", productId);
 
     if (!productId) {
@@ -272,7 +272,7 @@ const ProductManagement = () =>{
         formData.append(`productImage[${index}]`, image);
       });
 
-      formData.append("product_id", productId); // ✅ Ensure product ID is included
+      formData.append("product_id", productId);
 
       const response = await axios.post(
         "https://spinryte.in/draw/api/Product/image_upload",
@@ -302,9 +302,9 @@ const ProductManagement = () =>{
     const files = Array.from(event.target.files);
     if (files.length === 0) return;
 
-    console.log("Selected Files:", files); // Debugging log
+    console.log("Selected Files:", files);
 
-    // Update Formik state with selected files
+
     formik.setValues((prevValues) => ({
       ...prevValues,
       productImage: [...prevValues.productImage, ...files],
@@ -447,7 +447,6 @@ const handleImageSelection = (index) => {
           attributes: attributeValues,
         });
 
-        // Store product images separately for the edit image UI
         setExistingImages(product_images.map(image => ({ id: image.id, url: image.image })));
 
         // Open Image Edit Dialog first
