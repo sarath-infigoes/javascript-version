@@ -36,6 +36,7 @@ const ProductManagement = () =>{
   const [editingProductId, setEditingProductId] = useState(null);
   const [openEditImageDialog, setOpenEditImageDialog] = useState(false);
     const [attributes, setAttributes] = useState([]);
+    const [newProductId, setNewProductId] = useState(null); // Store product ID
 
   useEffect(() => {
     fetchProducts();
@@ -156,23 +157,22 @@ const ProductManagement = () =>{
     onSubmit: async (values) => {
       console.log("Submitting form values:", values);
 
-       const formattedAttributes = Object.keys(values.attributes).map((atr_id) => ({
-         id: Number(atr_id), // Ensure correct attribute ID
-         input_values: values.attributes[atr_id] || "", // Ensure correct input value
-       }));
+      const formattedAttributes = Object.keys(values.attributes).map((atr_id) => ({
+        id: Number(atr_id),
+        input_values: values.attributes[atr_id] || "",
+      }));
 
       const productData = {
-        id: editItemId || "", // Ensure correct ID for edit case
+        id: editItemId || "",
         name: values.name,
         description: values.description,
         price: values.price,
-        category: selectedCategory || values.category, // Ensure category is set correctly
+        category: selectedCategory || values.category,
         status: values.status === "Active" ? "1" : "2",
-        attributes: formattedAttributes, // Ensure attributes are correctly structured
+        attributes: formattedAttributes,
       };
 
       console.log("Final product data being sent:", productData);
-      console.log("Edit item ID:", editItemId);
 
       try {
         let response;
@@ -191,10 +191,11 @@ const ProductManagement = () =>{
           console.log("Create response:", response.data);
           showMessage("Product Added successfully");
 
-          const newProductId = response.data.output?.product_id;
-          if (newProductId) {
-            associateImagesWithProduct(newProductId);
-            setOpenAddImageDialog(true);
+          const createdProductId = response.data.output?.product_id;
+          if (createdProductId) {
+            setNewProductId(createdProductId); // ✅ Store the new product ID
+            formik.setFieldValue("id", createdProductId); // ✅ Update Formik's values
+            setOpenAddImageDialog(true); // ✅ Open the image upload dialog
           }
         }
 
@@ -206,6 +207,7 @@ const ProductManagement = () =>{
       }
     },
   });
+
 
   const handleAttributeChange = (attributeId, value) => {
     formik.setValues((prevValues) => ({
@@ -247,38 +249,68 @@ const ProductManagement = () =>{
     }
   };
 
-  const handleUploadClick = () => {
-    const imagesToUpload = formik.values.productImage.filter(image => image instanceof File);
+  const handleUploadClick = async () => {
+    const productId = formik.values.id || newProductId; // ✅ Get the correct product ID
+    console.log("Uploading images for Product ID:", productId);
 
-    if (imagesToUpload.length > 0) {
+    if (!productId) {
+      showMessage("Error: Product ID is missing. Cannot upload images.");
+
+      return;
+    }
+
+    const imagesToUpload = (formik.values.productImage || []).filter(image => image instanceof File);
+    if (imagesToUpload.length === 0) {
+      showMessage("No valid images selected for upload.");
+
+      return;
+    }
+
+    try {
       const formData = new FormData();
-
-      // Append images correctly
-      imagesToUpload.forEach((productImage, index) => {
-        formData.append(`images[]`, productImage); // ✅ Corrected Syntax
+      imagesToUpload.forEach((image, index) => {
+        formData.append(`productImage[${index}]`, image);
       });
 
-      formData.append('product_id', editItemId); // Ensure this is correct
+      formData.append("product_id", productId); // ✅ Ensure product ID is included
 
-      axios.post("https://spinryte.in/draw/api/Product/image_upload", formData)
-        .then(response => {
-          showMessage('Images uploaded successfully');
-          setOpenAddImageDialog(false);
-          fetchProducts(); // ✅ Ensure this updates the product list
-        })
-        .catch(error => {
-          console.error('Error uploading images:', error);
-          showMessage('Error uploading images');
-        });
-    } else {
-      showMessage('No images selected for upload');
+      const response = await axios.post(
+        "https://spinryte.in/draw/api/Product/image_upload",
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" }
+        }
+      );
+
+      console.log("Image Upload Response:", response.data);
+
+      if (response.data.status) {
+        showMessage("Images uploaded successfully!");
+        setOpenAddImageDialog(false);
+        fetchProducts();
+      } else {
+        showMessage("Image upload failed. Please try again.");
+      }
+    } catch (error) {
+      console.error("Error uploading images:", error);
+      showMessage("Error uploading images. Please check the console for details.");
     }
   };
 
+
   const handleFileUpload = (event) => {
     const files = Array.from(event.target.files);
-    formik.setFieldValue("productImage", [...(formik.values.productImage || []), ...files]);
+    if (files.length === 0) return;
+
+    console.log("Selected Files:", files); // Debugging log
+
+    // Update Formik state with selected files
+    formik.setValues((prevValues) => ({
+      ...prevValues,
+      productImage: [...prevValues.productImage, ...files],
+    }));
   };
+
 
   const handleImageChange = (imageUrl, index) => {
     console.log(imageUrl)
@@ -705,15 +737,16 @@ const handleImageSelection = (index) => {
   </DialogActions>
 </Dialog>
 
-        <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
-        <Dialog open={openAddImageDialog} onClose={() => setOpenAddImageDialog(false)} maxWidth="sm">
+<div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
+<Dialog open={openAddImageDialog} onClose={() => setOpenAddImageDialog(false)} maxWidth="sm">
   <DialogTitle>Add Images</DialogTitle>
   <DialogContent>
     <div>
+      <p>Product ID: {newProductId || "Not Available"}</p> {/* Debugging: Show ID */}
       {(formik.values.productImage || []).map((image, index) => (
         <div key={index} style={{ marginBottom: '10px' }}>
           <img
-            src={image instanceof File ? URL.createObjectURL(image) : image.url || image}
+            src={image instanceof File ? URL.createObjectURL(image) : image.url || image.id}
             alt={`Product Image ${index + 1}`}
             style={{ width: "100px", height: "auto" }}
           />
@@ -738,6 +771,7 @@ const handleImageSelection = (index) => {
     </div>
   </DialogContent>
 </Dialog>
+
       </div>
       <div style={{ margin: '20px', marginLeft: 'auto', marginRight: 'auto' }}>
       <Dialog open={openEditImageDialog} onClose={() => setOpenEditImageDialog(false)} maxWidth="sm">
